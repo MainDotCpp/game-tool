@@ -30,7 +30,7 @@ jobs:
         args: --release
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: game_tool-windows
         path: target/release/game_tool.exe
