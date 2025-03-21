@@ -1,6 +1,7 @@
 mod account;
 mod config;
 mod script;
+mod sync;
 
 use anyhow::Result;
 use console::Term;
@@ -22,8 +23,7 @@ fn main() -> Result<()> {
         
         let options = vec![
             "账号管理",
-            "游戏配置",
-            "脚本管理",
+            "路径同步",
             "退出",
         ];
         
@@ -35,9 +35,8 @@ fn main() -> Result<()> {
             
         match selection {
             0 => account_menu(&mut config)?,
-            1 => game_config_menu(&mut config)?,
-            2 => script_menu(&mut config)?,
-            3 => break,
+            1 => sync_menu(&mut config)?,
+            2 => break,
             _ => unreachable!(),
         }
         
@@ -70,10 +69,26 @@ fn account_menu(config: &mut config::Config) -> Result<()> {
         .interact()?;
         
     match selection {
-        0 => account::list_accounts(config)?,
-        1 => account::add_account(config)?,
-        2 => account::remove_account(config)?,
-        3 => account::select_and_login(config)?,
+        0 => {
+            account::list_accounts(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        1 => {
+            account::add_account(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        2 => {
+            account::remove_account(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        3 => {
+            account::select_and_login(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
         4 => return Ok(()),
         _ => unreachable!(),
     }
@@ -81,18 +96,24 @@ fn account_menu(config: &mut config::Config) -> Result<()> {
     Ok(())
 }
 
-fn game_config_menu(config: &mut config::Config) -> Result<()> {
+fn sync_menu(config: &mut config::Config) -> Result<()> {
     let term = Term::stdout();
     term.clear_screen()?;
     
-    println!("游戏配置");
+    println!("路径同步");
     println!("========");
     
     let options = vec![
-        "查看游戏配置路径",
-        "设置游戏配置路径",
-        "备份游戏配置",
-        "恢复游戏配置",
+        "列出同步项目",
+        "添加同步项目",
+        "删除同步项目",
+        "启用/禁用同步项目",
+        "为项目分配组",
+        "组管理",
+        "备份选项",
+        "恢复选项",
+        "查看备份目录",
+        "设置备份目录",
         "返回主菜单",
     ];
     
@@ -104,41 +125,74 @@ fn game_config_menu(config: &mut config::Config) -> Result<()> {
         
     match selection {
         0 => {
-            println!("当前游戏配置路径: {:?}", config.game_config_path);
+            sync::list_sync_items(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
         },
         1 => {
-            print!("请输入新的游戏配置路径: ");
+            sync::add_sync_item(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        2 => {
+            sync::remove_sync_item(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        3 => {
+            sync::toggle_sync_item(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        4 => {
+            sync::assign_group_to_item(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        5 => group_menu(config)?,
+        6 => backup_menu(config)?,
+        7 => restore_menu(config)?,
+        8 => {
+            println!("当前备份目录: {:?}", config.backup_dir);
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        9 => {
+            print!("请输入新的备份目录路径: ");
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             
-            config.game_config_path = std::path::PathBuf::from(input.trim());
+            let path = std::path::PathBuf::from(input.trim());
+            config.backup_dir = path;
             config.save()?;
             
-            println!("游戏配置路径已更新为: {:?}", config.game_config_path);
+            println!("备份目录已更新为: {:?}", config.backup_dir);
+            config.ensure_backup_dir()?;
+            
+            println!("\n按回车键继续...");
+            term.read_line()?;
         },
-        2 => config::backup::backup_game_config(config)?,
-        3 => config::backup::restore_game_config(config)?,
-        4 => return Ok(()),
+        10 => return Ok(()),
         _ => unreachable!(),
     }
     
     Ok(())
 }
 
-fn script_menu(config: &mut config::Config) -> Result<()> {
+// 组管理菜单
+fn group_menu(config: &mut config::Config) -> Result<()> {
     let term = Term::stdout();
     term.clear_screen()?;
     
-    println!("脚本管理");
-    println!("========");
+    println!("组管理");
+    println!("======");
     
     let options = vec![
-        "列出脚本路径",
-        "添加脚本路径",
-        "删除脚本路径",
-        "备份脚本",
-        "恢复脚本",
-        "返回主菜单",
+        "列出所有组",
+        "添加同步组",
+        "删除同步组",
+        "启用/禁用同步组",
+        "返回同步菜单",
     ];
     
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -149,20 +203,102 @@ fn script_menu(config: &mut config::Config) -> Result<()> {
         
     match selection {
         0 => {
-            println!("脚本路径:");
-            if config.script_paths.is_empty() {
-                println!("  没有配置脚本路径。");
-            } else {
-                for (i, path) in config.script_paths.iter().enumerate() {
-                    println!("  {}. {:?}", i + 1, path);
-                }
-            }
+            sync::list_sync_groups(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
         },
-        1 => script::add_script_path(config)?,
-        2 => script::remove_script_path(config)?,
-        3 => script::backup_scripts(config)?,
-        4 => script::restore_scripts(config)?,
-        5 => return Ok(()),
+        1 => {
+            sync::add_sync_group(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        2 => {
+            sync::remove_sync_group(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        3 => {
+            sync::toggle_sync_group(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        4 => return Ok(()),
+        _ => unreachable!(),
+    }
+    
+    Ok(())
+}
+
+// 备份选项菜单
+fn backup_menu(config: &mut config::Config) -> Result<()> {
+    let term = Term::stdout();
+    term.clear_screen()?;
+    
+    println!("备份选项");
+    println!("========");
+    
+    let options = vec![
+        "一键备份所有启用的项目",
+        "备份指定组的项目",
+        "返回同步菜单",
+    ];
+    
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("请选择一个选项")
+        .default(0)
+        .items(&options)
+        .interact()?;
+        
+    match selection {
+        0 => {
+            sync::backup_all(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        1 => {
+            sync::backup_group(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        2 => return Ok(()),
+        _ => unreachable!(),
+    }
+    
+    Ok(())
+}
+
+// 恢复选项菜单
+fn restore_menu(config: &mut config::Config) -> Result<()> {
+    let term = Term::stdout();
+    term.clear_screen()?;
+    
+    println!("恢复选项");
+    println!("========");
+    
+    let options = vec![
+        "一键恢复所有启用的项目",
+        "恢复指定组的项目",
+        "返回同步菜单",
+    ];
+    
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("请选择一个选项")
+        .default(0)
+        .items(&options)
+        .interact()?;
+        
+    match selection {
+        0 => {
+            sync::restore_all(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        1 => {
+            sync::restore_group(config)?;
+            println!("\n按回车键继续...");
+            term.read_line()?;
+        },
+        2 => return Ok(()),
         _ => unreachable!(),
     }
     
